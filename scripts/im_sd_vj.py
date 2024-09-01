@@ -24,7 +24,7 @@ from modules.processing import StableDiffusionProcessingTxt2Img
 
 # from modules.script_callbacks import on_ui_tabs
 
-log = logging.getLogger("[auto-llm]")
+log = logging.getLogger("[auto-VJ]")
 # log.setLevel(logging.INFO)
 # Logging
 log_file = os.path.join(scripts.basedir(), "auto-llm.log")
@@ -105,19 +105,25 @@ def _get_effective_prompt(prompts: list[str], prompt: str) -> str:
 #         log.warning("Command failed. " + llm_post_action_cmd + " err=" + err)
 #         VarClass.subprocess_history_array.append(["[X]PostAction-Command failed.", err, llm_post_action_cmd, out])
 #     return out
+class ImageFileX:
+    def __init__(self, fname):
+        self.filename = fname
 
 
 class IM_SD_VJ(scripts.Script):
     last_one_image = None
-    opened_image_path:str = ''
+    opened_image_path: str = ''
     threading_stop_flag: bool = False
     threading_all: threading = None
     SENDER_NAME = 'SD-VJ'
-    pil_image=None
-    sender=SpoutGL.SpoutSender()
+    pil_image = None
+    sender = SpoutGL.SpoutSender()
     sender.setSenderName(SENDER_NAME)
+
     def __init__(self) -> None:
         super().__init__()
+        self.spout_image_rx = None
+        self.spout_image_tx = None
         self.all_args_key = []
         self.all_args_val = []
         self.all_args_dict = {}
@@ -128,13 +134,16 @@ class IM_SD_VJ(scripts.Script):
         return ""
 
     def call_SpoutGL_sender(self):
-        if self.last_one_image is not None:
+        if (self.last_one_image is not None) or (hasattr(self.last_one_image, 'filename')) or type(
+                self.last_one_image.filename) == str:
             image_path = os.path.join(up_3_level_path, self.last_one_image.filename)
             if self.opened_image_path != self.last_one_image.filename:
                 self.opened_image_path = self.last_one_image.filename
                 self.pil_image = Image.open(image_path)
+                self.spout_image_tx.value = image_path
         if self.pil_image is not None:
-            result = self.sender.sendImage(self.pil_image.tobytes("raw"), self.pil_image.width, self.pil_image.height, GL.GL_RGB, False, 0)
+            result = self.sender.sendImage(self.pil_image.tobytes("raw"), self.pil_image.width, self.pil_image.height,
+                                           GL.GL_RGB, False, 0)
             #result = self.sender.sendTexture(  sendTextureID, GL_TEXTURE_2D, self.pil_image.width, self.pil_image.height, True, 0)
             self.sender.setFrameSync(self.SENDER_NAME)
 
@@ -154,6 +163,11 @@ class IM_SD_VJ(scripts.Script):
                 # Wait time is in milliseconds; note that 0 will return immediately
                 receiver.waitFrameSync(self.SENDER_NAME, 10000)
 
+    def send_pick_image(self, pick):
+        log.warning(pick)
+        if type(pick) == str:
+            self.last_one_image = ImageFileX(pick)
+
     def threading_cancel(self, spout_tx_enable, spout_rx_enable, spout_fps,
                          syphon_tx_enable, syphon_rx_enable, syphon_fps):
         self.threading_stop_flag = True
@@ -161,7 +175,7 @@ class IM_SD_VJ(scripts.Script):
     def threading_run(self, spout_tx_enable, spout_rx_enable, spout_fps,
                       syphon_tx_enable, syphon_rx_enable, syphon_fps):
         while True:
-            log.warning(f"[{str(datetime.datetime.now())}][threading_run][spout_fps]{spout_fps}")
+            # log.warning(f"[{str(datetime.datetime.now())}][threading_run][spout_fps]{spout_fps}")
             self.call_SpoutGL_sender()
             self.call_SpoutGL_receive()
             time.sleep(1. / spout_fps)
@@ -188,21 +202,29 @@ class IM_SD_VJ(scripts.Script):
 
         with gr.Blocks():
             # gr.Markdown("Blocks")
-            with gr.Accordion(open=False, label="Auto-Share-OpenGL-Im-VJ 20240828"):
+            with gr.Accordion(open=False, label="Auto-VJ-3rd-Software 20240828"):
                 with gr.Tab("Spout(win)"):
                     gr.Markdown("* Tx - Open ur third software receive SD-Image\n"
                                 "* Rx - Auto Send to Inpainting\n"
-                                "* You can enable both Rx-Tx receive Image then output to ur Live show Control software.\n")
+                                "* You can enable both Rx-Tx receive Image then output to ur Live show Control software.\n"
+                                "* Enable then Click Start button to monitor SD-Image\n"
+                                "* Using OpenGL GPU share memory sync between SD-Img and 3rd software\n")
 
                     with gr.Row():
                         spout_tx_enable = gr.Checkbox(label=" Enable_spout_Tx🌀", value=False)
                         spout_rx_enable = gr.Checkbox(label=" Enable_spout_Rx🌀", value=False)
                     spout_fps = gr.Slider(
-                        elem_id="llm_top_k_vision", label="spout_tx_rx_fps", value=30, minimum=1, maximum=60,
+                        elem_id="llm_top_k_vision", label="Tx/Rx spout_tx_rx_fps", value=30, minimum=1, maximum=60,
                         step=1, interactive=True, hint='spout_tx_fps')
                     with gr.Row():
-                        spout_timer_start = gr.Button("[Tx] Start ")
-                        spout_timer_cancel = gr.Button("[Tx] Stop ")
+                        self.spout_image_tx = gr.Image(label="2. Pick to send [spout_image_tx]", lines=1, type="filepath",
+                                                       interactive=True, every=1)
+                        self.spout_image_rx = gr.Image(label="2. [spout_image_rx]", lines=1, type="filepath",
+                                                       interactive=True, every=1)
+
+                    with gr.Row():
+                        spout_timer_start = gr.Button("[Tx] Start (monitor SD-Img)")
+                        spout_timer_cancel = gr.Button("[Tx] Stop Send")
 
                 with gr.Tab("Syphon(mac)"):
                     gr.Markdown("* Tx - Open ur third software receive SD-Image\n"
@@ -215,8 +237,8 @@ class IM_SD_VJ(scripts.Script):
                         elem_id="llm_top_k_vision", label="syphon_tx_fps", value=30, minimum=1, maximum=60,
                         step=1, interactive=True, hint='syphon_tx_fps')
                     with gr.Row():
-                        syphon_timer_start = gr.Button("[Tx] Start ")
-                        syphon_timer_cancel = gr.Button("[Tx] Stop ")
+                        syphon_timer_start = gr.Button("[Tx] Start Threading")
+                        syphon_timer_cancel = gr.Button("[Tx] Stop Threading")
 
                 with gr.Tab("Setup"):
                     gr.Markdown("* API-URI: LMStudio=>http://localhost:1234/v1 \n"
@@ -240,23 +262,12 @@ class IM_SD_VJ(scripts.Script):
 
         syphon_timer_start.click(self.threading_start, inputs=self.all_args_val, outputs=None)
         syphon_timer_cancel.click(self.threading_cancel, inputs=self.all_args_val, outputs=None)
-
+        self.spout_image_tx.change(self.send_pick_image, inputs=self.spout_image_tx)
         return self.all_args_val
 
     # def process(self, p: StableDiffusionProcessingTxt2Img,*args):
 
-    # def postprocess(self, p: StableDiffusionProcessingTxt2Img, *args):
-    #     global args_dict
-    #     args_dict = dict(zip(args_keys, args))
-    #     # if llm_is_enabled:
-    #     if args_dict.get('enable_spout'):
-    #         log.warning("[][][enable_spout]")
-    #         #call_SpoutGL_sender(*args)
-    #     # if llm_is_open_eye:
-    #     if args_dict.get('enable_syphon'):
-    #         log.warning("[][][enable_syphon]")
-    #
-    #     return p.all_prompts[0]
+    #def postprocess(self, p: StableDiffusionProcessingTxt2Img, *args):
 
 
 args_dict = None
