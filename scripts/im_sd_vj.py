@@ -9,6 +9,7 @@ import subprocess
 import threading
 import time
 from itertools import repeat
+import pprint
 
 from pydantic import BaseModel
 from typing import List
@@ -202,7 +203,7 @@ class IM_SD_VJ(scripts.Script):
 
         with gr.Blocks():
             # gr.Markdown("Blocks")
-            with gr.Accordion(open=False, label="Auto-VJ-3rd-Software 20240828"):
+            with gr.Accordion(open=False, label="Auto VJ v20240828"):
                 with gr.Tab("Spout(win)"):
                     gr.Markdown("* Tx - Open ur third software receive SD-Image\n"
                                 "* Rx - Auto Send to Inpainting\n"
@@ -267,14 +268,35 @@ class IM_SD_VJ(scripts.Script):
 
     # def process(self, p: StableDiffusionProcessingTxt2Img,*args):
 
-    #def postprocess(self, p: StableDiffusionProcessingTxt2Img, *args):
 
+    def postprocess(self, p: StableDiffusionProcessingTxt2Img, *args):
+        log.warning(f"_____[1][postprocess][enable_spout] p")
+        xprint(p.txt2img_image_conditioning)
+
+
+    # def postprocess_image(self, p, pp, *script_args):
+    #     # is_enable=getattr(p,"enable_spout")
+    #     log.warning(f"_____[1][postprocess_image][enable_spout] p")
+    #     xprint(p)
+    #     log.warning(f"_____[2][postprocess_image][enable_spout] pp")
+    #     xprint(pp)
+    #     # pp.image = p.init_images[0]
+    #     # log.warning(f"[2][postprocess_image][enable_spout] {is_enable}")
+
+        # pp.image = ensure_pil_image(pp.image, "RGB")
+        # init_image = copy(pp.image)
+        # arg_list = self.get_args(p, *args_)
+        # params_txt_content = self.read_params_txt()
 
 args_dict = None
 args_keys = ['enable_spout', 'enable_spout_tx', 'enable_spout_rx',
              'enable_syphon', 'enable_syphon_tx', 'enable_syphon_rx']
 on_image_saved_params = []
 
+def xprint(obj):
+    for attr in dir(obj):
+        if not attr.startswith("__") and (attr.__contains__('image') or attr.__contains__('img')) :
+            print(attr + "==>", getattr(obj, attr))
 
 def on_image_saved(params):
     on_image_saved_params.append(params)
