@@ -32,7 +32,7 @@ if platform.system() == "Windows":
         launch.run_pip("install SpoutGL", "SpoutGL")
 elif platform.system() == "Darwin":
     if not launch.is_installed("syphon-python"):
-        launch.run_pip("install git+https://github.com/cansik/syphon-python/releases/download/v0.1.1/syphon_python-0.1.1-cp310-cp310-macosx_10_9_universal2.whl", "syphon-python")
+        launch.run_pip("install syphon-python", "syphon-python")
 
 # if not launch.is_installed("OpenGL_accelerate"):
 #     launch.run_pip(f"install -U OpenGL_accelerate", "OpenGL_accelerate")
