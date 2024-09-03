@@ -24,6 +24,8 @@ import launch
 
 if not launch.is_installed("PyOpenGL"):
     launch.run_pip(f"install SpoutGL PyOpenGL PyOpenGL_accelerate", "SpoutGL PyOpenGL PyOpenGL_accelerate")
+if not launch.is_installed("SpoutGL"):
+    launch.run_pip(f"install SpoutGL", "SpoutGL")
 # if not launch.is_installed("OpenGL_accelerate"):
 #     launch.run_pip(f"install -U OpenGL_accelerate", "OpenGL_accelerate")
 # if not launch.is_installed("numpy"):
