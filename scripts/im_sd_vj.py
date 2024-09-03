@@ -5,21 +5,23 @@ import io
 import logging
 import multiprocessing
 import os
+import platform
 import subprocess
 import threading
 import time
 from itertools import repeat
-import pprint
-
-from pydantic import BaseModel
-from typing import List
 
 import gradio as gr
 import numpy as np
 from OpenGL import GL
 from PIL import Image
+if platform.system() == "Windows":
+    import SpoutGL
+elif platform.system() == "Darwin":
+    import syphon
+    from syphon.utils.numpy import copy_image_to_mtl_texture
+    from syphon.utils.raw import create_mtl_texture
 
-import SpoutGL
 from modules import scripts, script_callbacks
 from modules.processing import StableDiffusionProcessingTxt2Img
 
@@ -134,6 +136,18 @@ class IM_SD_VJ(scripts.Script):
     def call_SpoutGL_receive(self):
         return ""
 
+    def call_syphon_sender(self):
+        # create server and texture
+        server = syphon.SyphonMetalServer("Demo")
+        texture = create_mtl_texture(server.device, 512, 512)
+        # create texture data
+        texture_data = np.zeros((512, 512, 4), dtype=np.uint8)
+        texture_data[:, :, 0] = 255  # fill red
+        texture_data[:, :, 3] = 255  # fill alpha
+        # copy texture data to texture and publish frame
+        copy_image_to_mtl_texture(texture_data, texture)
+        server.publish_frame_texture(texture)
+
     def call_SpoutGL_sender(self):
         if (self.last_one_image is not None) or (hasattr(self.last_one_image, 'filename')) or type(
                 self.last_one_image.filename) == str:
@@ -164,6 +178,8 @@ class IM_SD_VJ(scripts.Script):
                 # Wait time is in milliseconds; note that 0 will return immediately
                 receiver.waitFrameSync(self.SENDER_NAME, 10000)
 
+
+
     def send_pick_image(self, pick):
         log.warning(pick)
         if type(pick) == str:
@@ -175,14 +191,26 @@ class IM_SD_VJ(scripts.Script):
 
     def threading_run(self, spout_tx_enable, spout_rx_enable, spout_fps,
                       syphon_tx_enable, syphon_rx_enable, syphon_fps):
-        while True:
-            # log.warning(f"[{str(datetime.datetime.now())}][threading_run][spout_fps]{spout_fps}")
-            self.call_SpoutGL_sender()
-            self.call_SpoutGL_receive()
-            time.sleep(1. / spout_fps)
-            if self.threading_stop_flag:
-                break
-
+        if platform.system() == "Windows":
+            log.warning(f"[][Win][]")
+            while True:
+                # log.warning(f"[{str(datetime.datetime.now())}][threading_run][spout_fps]{spout_fps}")
+                self.call_SpoutGL_sender()
+                self.call_SpoutGL_receive()
+                time.sleep(1. / spout_fps)
+                if self.threading_stop_flag:
+                    break
+        elif platform.system() == "Linux":
+            log.warning(f"[][Linux not support][]")
+        elif platform.system() == "Darwin":
+            log.warning(f"[][Mac][]")
+            while True:
+                # log.warning(f"[{str(datetime.datetime.now())}][threading_run][spout_fps]{spout_fps}")
+                self.call_syphon_sender()
+                # self.call_SpoutGL_receive()
+                time.sleep(1. / syphon_fps)
+                if self.threading_stop_flag:
+                    break
     def threading_start(self, spout_tx_enable, spout_rx_enable, spout_fps,
                         syphon_tx_enable, syphon_rx_enable, syphon_fps):
         self.threading_stop_flag = True
@@ -203,7 +231,7 @@ class IM_SD_VJ(scripts.Script):
 
         with gr.Blocks():
             # gr.Markdown("Blocks")
-            with gr.Accordion(open=False, label="Auto VJ v20240828"):
+            with gr.Accordion(open=False, label="Auto GPU texture sharing v20240828"):
                 with gr.Tab("Spout(win)"):
                     gr.Markdown("* Tx - Open ur third software receive SD-Image\n"
                                 "* Rx - Auto Send to Inpainting\n"
