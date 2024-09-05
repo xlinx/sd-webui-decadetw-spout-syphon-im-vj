@@ -159,7 +159,7 @@ class IM_SD_VJ(scripts.Script):
             if self.opened_image_path != self.last_one_image.filename:
                 self.opened_image_path = self.last_one_image.filename
                 self.pil_image = Image.open(image_path)
-                self.spout_image_tx.value = image_path
+                # self.spout_image_tx.value = image_path
         if self.pil_image is not None:
             result = self.sender.sendImage(self.pil_image.tobytes("raw"), self.pil_image.width, self.pil_image.height,
                                            GL.GL_RGB, False, 0)

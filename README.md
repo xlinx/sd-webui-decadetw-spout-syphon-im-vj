@@ -42,7 +42,7 @@
 
 #### Update Log
   * [add|202400822] | 🟢 spout support
-  * [add|2024008xx] | 🟠 syphon support
+  * [add|2024008xx] | 🟠 syphon support (anyone need?)
   * [add|2024008xx] | 🟠 ofxNDI
   * 🟢 SD-Image(latent space) -> Spout(win)|(mac)Syphon -> GPU Memory -> Other Software (Ultra-fast-access)
   * 🟠 SD-Inpainting use <- GPU Memory <- Spout(win)|(mac)Syphon <- Other Software
