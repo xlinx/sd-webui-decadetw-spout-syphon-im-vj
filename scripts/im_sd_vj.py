@@ -15,6 +15,7 @@ import gradio as gr
 import numpy as np
 from OpenGL import GL
 from PIL import Image
+
 if platform.system() == "Windows":
     import SpoutGL
 elif platform.system() == "Darwin":
@@ -120,8 +121,13 @@ class IM_SD_VJ(scripts.Script):
     threading_all: threading = None
     SENDER_NAME = 'SD-VJ'
     pil_image = None
-    sender = SpoutGL.SpoutSender()
-    sender.setSenderName(SENDER_NAME)
+
+    if platform.system() == "Windows":
+        sender = SpoutGL.SpoutSender()
+        sender.setSenderName(SENDER_NAME)
+    elif platform.system() == "Darwin":
+        sender = syphon.SyphonMetalServer("Demo")
+        texture = create_mtl_texture(sender.device, 512, 512)
 
     def __init__(self) -> None:
         super().__init__()
@@ -133,24 +139,22 @@ class IM_SD_VJ(scripts.Script):
 
         # self.last_one_image={}
 
-    def call_SpoutGL_receive(self):
+    def call_Syphon_rx(self):
         return ""
 
-    def call_syphon_sender(self):
+    def call_Syphon_tx(self):
         # create server and texture
-        server = syphon.SyphonMetalServer("Demo")
-        texture = create_mtl_texture(server.device, 512, 512)
         # create texture data
         texture_data = np.zeros((512, 512, 4), dtype=np.uint8)
         texture_data[:, :, 0] = 255  # fill red
         texture_data[:, :, 3] = 255  # fill alpha
         # copy texture data to texture and publish frame
-        copy_image_to_mtl_texture(texture_data, texture)
-        server.publish_frame_texture(texture)
+        copy_image_to_mtl_texture(texture_data, self.texture)
+        self.sender.publish_frame_texture(self.texture)
 
-    def call_SpoutGL_sender(self):
-        if (self.last_one_image is not None) or (hasattr(self.last_one_image, 'filename')) or type(
-                self.last_one_image.filename) == str:
+    def call_Spout_tx(self):
+        if (self.last_one_image is not None) and (hasattr(self.last_one_image, 'filename')) and (
+                type(self.last_one_image.filename) == str):
             image_path = os.path.join(up_3_level_path, self.last_one_image.filename)
             if self.opened_image_path != self.last_one_image.filename:
                 self.opened_image_path = self.last_one_image.filename
@@ -162,7 +166,7 @@ class IM_SD_VJ(scripts.Script):
             #result = self.sender.sendTexture(  sendTextureID, GL_TEXTURE_2D, self.pil_image.width, self.pil_image.height, True, 0)
             self.sender.setFrameSync(self.SENDER_NAME)
 
-    def call_SpoutGL_receiver(self):
+    def call_Spout_rx(self):
         with SpoutGL.SpoutReceiver() as receiver:
             receiver.setReceiverName("SpoutGL-test")
             buffer = None
@@ -178,15 +182,12 @@ class IM_SD_VJ(scripts.Script):
                 # Wait time is in milliseconds; note that 0 will return immediately
                 receiver.waitFrameSync(self.SENDER_NAME, 10000)
 
-
-
     def send_pick_image(self, pick):
         log.warning(pick)
         if type(pick) == str:
             self.last_one_image = ImageFileX(pick)
 
-    def threading_cancel(self, spout_tx_enable, spout_rx_enable, spout_fps,
-                         syphon_tx_enable, syphon_rx_enable, syphon_fps):
+    def threading_cancel(self):
         self.threading_stop_flag = True
 
     def threading_run(self, spout_tx_enable, spout_rx_enable, spout_fps,
@@ -195,22 +196,27 @@ class IM_SD_VJ(scripts.Script):
             log.warning(f"[][Win][]")
             while True:
                 # log.warning(f"[{str(datetime.datetime.now())}][threading_run][spout_fps]{spout_fps}")
-                self.call_SpoutGL_sender()
-                self.call_SpoutGL_receive()
+                if spout_tx_enable:
+                    self.call_Spout_tx()
+                if spout_rx_enable:
+                    self.call_Spout_rx()
                 time.sleep(1. / spout_fps)
                 if self.threading_stop_flag:
                     break
-        elif platform.system() == "Linux":
-            log.warning(f"[][Linux not support][]")
         elif platform.system() == "Darwin":
             log.warning(f"[][Mac][]")
             while True:
                 # log.warning(f"[{str(datetime.datetime.now())}][threading_run][spout_fps]{spout_fps}")
-                self.call_syphon_sender()
-                # self.call_SpoutGL_receive()
+                if syphon_tx_enable:
+                    self.call_Spout_tx()
+                if syphon_rx_enable:
+                    self.call_Spout_rx()
                 time.sleep(1. / syphon_fps)
                 if self.threading_stop_flag:
                     break
+        elif platform.system() == "Linux":
+            log.warning(f"[][Linux not support][]")
+
     def threading_start(self, spout_tx_enable, spout_rx_enable, spout_fps,
                         syphon_tx_enable, syphon_rx_enable, syphon_fps):
         self.threading_stop_flag = True
@@ -231,7 +237,7 @@ class IM_SD_VJ(scripts.Script):
 
         with gr.Blocks():
             # gr.Markdown("Blocks")
-            with gr.Accordion(open=False, label="Auto GPU texture sharing v20240828"):
+            with gr.Accordion(open=False, label="Auto GPU Sharing SD-Result v20240828"):
                 with gr.Tab("Spout(win)"):
                     gr.Markdown("* Tx - Open ur third software receive SD-Image\n"
                                 "* Rx - Auto Send to Inpainting\n"
@@ -243,13 +249,13 @@ class IM_SD_VJ(scripts.Script):
                         spout_tx_enable = gr.Checkbox(label=" Enable_spout_Tx🌀", value=False)
                         spout_rx_enable = gr.Checkbox(label=" Enable_spout_Rx🌀", value=False)
                     spout_fps = gr.Slider(
-                        elem_id="llm_top_k_vision", label="Tx/Rx spout_tx_rx_fps", value=30, minimum=1, maximum=60,
+                        label="Tx/Rx spout_tx_rx_fps", value=30, minimum=1, maximum=60,
                         step=1, interactive=True, hint='spout_tx_fps')
-                    with gr.Row():
-                        self.spout_image_tx = gr.Image(label="2. Pick to send [spout_image_tx]", lines=1, type="filepath",
-                                                       interactive=True, every=1)
-                        self.spout_image_rx = gr.Image(label="2. [spout_image_rx]", lines=1, type="filepath",
-                                                       interactive=True, every=1)
+                    # with gr.Row():
+                    #     self.spout_image_tx = gr.Image(label="2. Pick to send [spout_image_tx]",
+                    #                                    type="filepath", visable=False)
+                    #     self.spout_image_rx = gr.Image(label="2. [spout_image_rx]",
+                    #                                    type="filepath", visable=False)
 
                     with gr.Row():
                         spout_timer_start = gr.Button("[Tx] Start (monitor SD-Img)")
@@ -263,7 +269,7 @@ class IM_SD_VJ(scripts.Script):
                         syphon_tx_enable = gr.Checkbox(label=" Enable_syphon_Tx🌀", value=False)
                         syphon_rx_enable = gr.Checkbox(label=" Enable_syphon_Rx🌀", value=False)
                     syphon_fps = gr.Slider(
-                        elem_id="llm_top_k_vision", label="syphon_tx_fps", value=30, minimum=1, maximum=60,
+                        label="syphon_tx_fps", value=30, minimum=1, maximum=60,
                         step=1, interactive=True, hint='syphon_tx_fps')
                     with gr.Row():
                         syphon_timer_start = gr.Button("[Tx] Start Threading")
@@ -287,20 +293,18 @@ class IM_SD_VJ(scripts.Script):
         # self.global_var = VarClass(**all_args_dict)
 
         spout_timer_start.click(self.threading_start, inputs=self.all_args_val, outputs=None)
-        spout_timer_cancel.click(self.threading_cancel, inputs=self.all_args_val, outputs=None)
+        spout_timer_cancel.click(self.threading_cancel)
 
         syphon_timer_start.click(self.threading_start, inputs=self.all_args_val, outputs=None)
-        syphon_timer_cancel.click(self.threading_cancel, inputs=self.all_args_val, outputs=None)
-        self.spout_image_tx.change(self.send_pick_image, inputs=self.spout_image_tx)
+        syphon_timer_cancel.click(self.threading_cancel)
+        # self.spout_image_tx.change(self.send_pick_image, inputs=self.spout_image_tx)
         return self.all_args_val
 
     # def process(self, p: StableDiffusionProcessingTxt2Img,*args):
 
-
     def postprocess(self, p: StableDiffusionProcessingTxt2Img, *args):
         log.warning(f"_____[1][postprocess][enable_spout] p")
         xprint(p.txt2img_image_conditioning)
-
 
     # def postprocess_image(self, p, pp, *script_args):
     #     # is_enable=getattr(p,"enable_spout")
@@ -311,20 +315,23 @@ class IM_SD_VJ(scripts.Script):
     #     # pp.image = p.init_images[0]
     #     # log.warning(f"[2][postprocess_image][enable_spout] {is_enable}")
 
-        # pp.image = ensure_pil_image(pp.image, "RGB")
-        # init_image = copy(pp.image)
-        # arg_list = self.get_args(p, *args_)
-        # params_txt_content = self.read_params_txt()
+    # pp.image = ensure_pil_image(pp.image, "RGB")
+    # init_image = copy(pp.image)
+    # arg_list = self.get_args(p, *args_)
+    # params_txt_content = self.read_params_txt()
+
 
 args_dict = None
 args_keys = ['enable_spout', 'enable_spout_tx', 'enable_spout_rx',
              'enable_syphon', 'enable_syphon_tx', 'enable_syphon_rx']
 on_image_saved_params = []
 
+
 def xprint(obj):
     for attr in dir(obj):
-        if not attr.startswith("__") and (attr.__contains__('image') or attr.__contains__('img')) :
+        if not attr.startswith("__") and (attr.__contains__('image') or attr.__contains__('img')):
             print(attr + "==>", getattr(obj, attr))
+
 
 def on_image_saved(params):
     on_image_saved_params.append(params)
